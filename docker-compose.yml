@@ -1,0 +1,88 @@
+services:
+  my-prometheus:
+    image: prom/prometheus
+    container_name: my-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+
+    ## Tempo
+  my-tempo:
+    image: grafana/tempo
+    container_name: my-tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+       - ./docker/tempo/tempo.yml:/etc/tempo.yaml:ro
+       - ./docker/tempo/tempo-data:/tmp/tempo
+    ports:
+       - "3200:3200" # Tempo
+       - "9411:9411" # zipkin
+
+  my-loki:
+    image: grafana/loki:main
+    container_name: my-loki
+    command: [ "-config.file=/etc/loki/local-config.yaml" ]
+    ports:
+        - "3100:3100"
+
+
+  my-grafana:
+    image: grafana/grafana
+    container_name: my-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./docker/grafana:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=password
+
+  my-ecom-service:
+    build: ./
+    container_name: my-ecom-service
+    depends_on:
+      - my-tempo
+      - my-loki
+      - my-db
+    restart: always
+    ports:
+      - "8081:8081"
+
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      SPRING_DATASOURCE_URL: jdbc:mysql://my-db:3306/ecommerce_store?createDatabaseIfNotExist=true&useUnicode=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQL8Dialect
+
+  my-db:
+    image: mysql:8.0
+    container_name: my-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ecommerce_store
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  my-phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: my-phpmyadmin
+    depends_on:
+      - my-db
+    environment:
+      PMA_HOST: my-db
+#      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8082:80"
+
+volumes:
+  db_data:
